@@ -1,0 +1,15 @@
+# Ambiente virtual
+.venv/
+
+# Cache do Python
+__pycache__/
+*.pyc
+
+# Segredos (o token do Pipefy fica aqui)
+.env
+
+# Ferramentas de teste e lint
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
