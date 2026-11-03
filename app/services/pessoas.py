@@ -5,10 +5,13 @@ consultado ou validado antes de criar, mover ou apagar um card.
 """
 
 import unicodedata
+from datetime import datetime
 from typing import Any
 
 from app.clients.pipefy import PipefyClient
 from app.core.config import Settings
+from app.schemas.card import CardCriado, Fase
+from app.schemas.pessoa import PessoaCreate
 
 
 class CidadeNaoEncontradaError(Exception):
@@ -64,3 +67,48 @@ class PessoaService:
                 return cidade["id"]
 
         raise CidadeNaoEncontradaError(nome, [c["title"] for c in cidades])
+
+    async def criar(self, pessoa: PessoaCreate) -> CardCriado:
+        """Cadastra a Pessoa criando um card na primeira fase do pipe.
+
+        Lança `CidadeNaoEncontradaError` se a cidade não existir.
+        """
+        cidade_id = await self.resolver_cidade(pessoa.cidade)
+        campos = self._montar_campos(pessoa, cidade_id)
+
+        card = await self._client.create_card(
+            self._settings.pipefy_pipe_id, pessoa.nome, campos
+        )
+
+        # Traduz a resposta do Pipefy (inglês) para o nosso formato.
+        return CardCriado(
+            id=card["id"],
+            titulo=card["title"],
+            url=card["url"],
+            fase=Fase(
+                id=card["current_phase"]["id"], nome=card["current_phase"]["name"]
+            ),
+        )
+
+    @staticmethod
+    def _montar_campos(pessoa: PessoaCreate, cidade_id: str) -> dict[str, Any]:
+        """Converte a Pessoa nos campos do formulário do Pipefy (id -> valor)."""
+        campos: dict[str, Any] = {
+            "nome": pessoa.nome,
+            "cidade": [cidade_id],  # connector: lista de IDs de registros
+            "data": datetime.now().isoformat(timespec="seconds"),  # data de envio
+        }
+
+        # Campos opcionais só são enviados quando preenchidos.
+        if pessoa.cpf:
+            campos["cpf"] = pessoa.cpf
+        if pessoa.data_de_nascimento:
+            campos["data_de_nascimento"] = pessoa.data_de_nascimento.isoformat()
+        if pessoa.telefone:
+            campos["telefone"] = pessoa.telefone
+        if pessoa.sexo:
+            campos["sexo"] = pessoa.sexo.value
+        if pessoa.hobbies:
+            campos["hobbies"] = [hobby.value for hobby in pessoa.hobbies]
+
+        return campos
