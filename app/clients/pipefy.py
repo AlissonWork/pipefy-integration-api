@@ -87,3 +87,28 @@ class PipefyClient:
         data = await self.execute(query, {"tableId": table_id})
         # Desembrulha: [{"node": {...}}, ...] -> [{...}, ...]
         return [edge["node"] for edge in data["table_records"]["edges"]]
+
+    async def create_card(
+        self, pipe_id: int, title: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Cria um card no pipe. `fields` mapeia o id do campo ao seu valor."""
+        mutation = """
+        mutation ($input: CreateCardInput!) {
+          createCard(input: $input) {
+            card { id title url current_phase { id name } }
+          }
+        }
+        """
+        # O Pipefy espera os campos como uma lista de pares field_id/field_value.
+        variables = {
+            "input": {
+                "pipe_id": pipe_id,
+                "title": title,
+                "fields_attributes": [
+                    {"field_id": campo, "field_value": valor}
+                    for campo, valor in fields.items()
+                ],
+            }
+        }
+        data = await self.execute(mutation, variables)
+        return data["createCard"]["card"]
