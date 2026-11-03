@@ -56,17 +56,15 @@ class PessoaService:
         """
         cidades = await self.listar_cidades()
 
-        # 1º: nome idêntico (a tabela tem "Fortaleza" e "fortaleza" duplicadas).
-        for cidade in cidades:
-            if cidade["title"] == nome:
-                return cidade["id"]
+        # Compara sem acentos e maiúsculas: "eusebio" encontra "Eusébio".
+        iguais = [c for c in cidades if normalizar(c["title"]) == normalizar(nome)]
+        if not iguais:
+            raise CidadeNaoEncontradaError(nome, [c["title"] for c in cidades])
 
-        # 2º: ignorando acentos e maiúsculas ("eusebio" encontra "Eusébio").
-        for cidade in cidades:
-            if normalizar(cidade["title"]) == normalizar(nome):
-                return cidade["id"]
-
-        raise CidadeNaoEncontradaError(nome, [c["title"] for c in cidades])
+        # A tabela tem duplicatas ("Fortaleza" e "fortaleza"): usamos o registro
+        # mais antigo (menor ID), que é o original.
+        original = min(iguais, key=lambda cidade: int(cidade["id"]))
+        return original["id"]
 
     async def criar(self, pessoa: PessoaCreate) -> CardCriado:
         """Cadastra a Pessoa criando um card na primeira fase do pipe.
