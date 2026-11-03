@@ -1,4 +1,9 @@
-"""Client da API GraphQL do Pipefy."""
+"""Client da API GraphQL do Pipefy.
+
+O Pipefy tem um único endereço (/graphql) que recebe sempre um POST com a
+consulta no corpo. Este módulo concentra essa comunicação: o resto da
+aplicação não precisa saber de HTTP, token ou formato GraphQL.
+"""
 
 from typing import Any
 
@@ -8,15 +13,20 @@ from app.core.config import Settings
 
 
 class PipefyError(Exception):
-    """Erro retornado pela API do Pipefy."""
+    """Erro devolvido pelo Pipefy na chave "errors" da resposta."""
 
 
 class PipefyClient:
-    """Concentra toda a comunicação com o Pipefy."""
+    """Concentra toda a comunicação com o Pipefy.
+
+    O `execute` cuida do "como" (HTTP, token, erros); os demais métodos
+    cuidam do "o quê" perguntar e reaproveitam o `execute`.
+    """
 
     def __init__(self, settings: Settings) -> None:
         self._url = settings.pipefy_api_url
         self._timeout = settings.pipefy_timeout
+        # Único ponto em que o token sai do SecretStr: no cabeçalho da requisição.
         self._headers = {
             "Authorization": f"Bearer {settings.pipefy_token.get_secret_value()}",
         }
@@ -24,7 +34,12 @@ class PipefyClient:
     async def execute(
         self, query: str, variables: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Envia uma query ou mutation e retorna o campo "data" da resposta."""
+        """Envia uma query ou mutation e retorna o campo "data" da resposta.
+
+        Lança `httpx.HTTPStatusError` para status de erro (ex.: 401, token
+        inválido) e `PipefyError` quando o Pipefy devolve "errors".
+        """
+        # O `async with` fecha a conexão no fim, mesmo se der erro no meio.
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(
                 self._url,
@@ -43,6 +58,8 @@ class PipefyClient:
 
     async def get_pipe(self, pipe_id: int) -> dict[str, Any]:
         """Busca o nome, as fases e os campos do formulário inicial do pipe."""
+        # Variáveis ($pipeId) em vez de colar o ID no texto: evita injection
+        # e o Pipefy valida o tipo.
         query = """
         query ($pipeId: ID!) {
           pipe(id: $pipeId) {
@@ -55,3 +72,18 @@ class PipefyClient:
         """
         data = await self.execute(query, {"pipeId": pipe_id})
         return data["pipe"]
+
+    async def list_table_records(self, table_id: str) -> list[dict[str, Any]]:
+        """Lista os registros (id e título) de uma tabela do Pipefy."""
+        # A lista vem "embrulhada" em edges/node (padrão de paginação do
+        # GraphQL); `first: 100` pede até 100 registros.
+        query = """
+        query ($tableId: ID!) {
+          table_records(table_id: $tableId, first: 100) {
+            edges { node { id title } }
+          }
+        }
+        """
+        data = await self.execute(query, {"tableId": table_id})
+        # Desembrulha: [{"node": {...}}, ...] -> [{...}, ...]
+        return [edge["node"] for edge in data["table_records"]["edges"]]
