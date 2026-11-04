@@ -43,8 +43,7 @@ def registrar_handlers(app: FastAPI) -> None:
             content={"detail": str(exc)},
         )
 
-        # 422: a fase de destino não existe; devolve as fases válidas.
-
+    # 422: a fase de destino não existe; devolve as fases válidas.
     @app.exception_handler(FaseNaoEncontradaError)
     async def fase_nao_encontrada(
         _: Request, exc: FaseNaoEncontradaError
