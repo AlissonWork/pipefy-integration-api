@@ -112,3 +112,30 @@ class PipefyClient:
         }
         data = await self.execute(mutation, variables)
         return data["createCard"]["card"]
+
+    async def get_card(self, card_id: int) -> dict[str, Any]:
+        """Busca um card: título, pipe a que pertence e fase atual."""
+        # Pedimos o pipe para conferir se o card é nosso, e a fase atual,
+        # que o passo 6 (avançar fase) também vai usar.
+        query = """
+        query ($cardId: ID!) {
+          card(id: $cardId) {
+            id
+            title
+            pipe { id }
+            current_phase { id name done }
+          }
+        }
+        """
+        data = await self.execute(query, {"cardId": card_id})
+        return data["card"]
+
+    async def delete_card(self, card_id: int) -> None:
+        """Apaga um card definitivamente."""
+        # Mutation de escrita; se falhar, o execute() já lança o erro.
+        mutation = """
+        mutation ($cardId: ID!) {
+          deleteCard(input: { id: $cardId }) { success }
+        }
+        """
+        await self.execute(mutation, {"cardId": card_id})
