@@ -11,7 +11,7 @@ from typing import Any
 
 from app.clients.pipefy import PipefyClient, PipefyError
 from app.core.config import Settings
-from app.schemas.card import CardCriado, CardDetalhe, CardResumo, Fase
+from app.schemas.card import CardCriado, CardDetalhe, CardMovido, CardResumo, Fase
 from app.schemas.pessoa import PessoaCreate
 
 
@@ -33,6 +33,19 @@ class CardNaoEncontradoError(Exception):
     def __init__(self, card_id: int) -> None:
         self.card_id = card_id  # guardado para quem tratar o erro, se precisar
         super().__init__(f"Card {card_id} não encontrado no pipe de Pessoas.")
+
+
+class FaseNaoEncontradaError(Exception):
+    """A fase de destino informada não existe no pipe."""
+
+    def __init__(self, destino: str, opcoes: list[str]) -> None:
+        self.destino = destino
+        self.opcoes = opcoes  # nomes das fases válidas, para a resposta de erro
+        super().__init__(f"Fase '{destino}' não encontrada.")
+
+
+class MovimentacaoInvalidaError(Exception):
+    """O card não pode ir para a fase pedida (ex.: já está na fase final)."""
 
 
 def normalizar(texto: str) -> str:
@@ -152,6 +165,71 @@ class PessoaService:
                 c["field"]["id"]: converter_valor(c["value"]) for c in card["fields"]
             },
         )
+
+    async def mover_fase(self, card_id: int, destino: str | None = None) -> CardMovido:
+        """Move o card para a fase `destino` ou, sem destino, para a próxima fase.
+
+        Lança `CardNaoEncontradoError`, `FaseNaoEncontradaError` ou
+        `MovimentacaoInvalidaError` (card já está na fase final ou no destino).
+        """
+        card = await self._buscar_card(card_id)  # 404 se não for do nosso pipe
+        atual = card["current_phase"]
+
+        # As fases vêm do próprio pipe, na ordem do quadro (nada fixo no código).
+        pipe = await self._client.get_pipe(self._settings.pipefy_pipe_id)
+        fases = pipe["phases"]
+
+        # Sem destino: próxima fase. Com destino: procura pelo nome ou ID.
+        if destino is None:
+            nova = self._proxima_fase(fases, atual)
+        else:
+            nova = self._encontrar_fase(fases, destino)
+
+        if nova["id"] == atual["id"]:
+            raise MovimentacaoInvalidaError(
+                f"O card já está na fase '{atual['name']}'."
+            )
+
+        movido = await self._client.move_card(card_id, nova["id"])
+        fase_atual = movido["current_phase"]
+        finalizado = fase_atual["done"]  # done = fase final do pipe
+
+        return CardMovido(
+            id=card["id"],
+            titulo=card["title"],
+            fase_anterior=Fase(id=atual["id"], nome=atual["name"]),
+            fase_atual=Fase(id=fase_atual["id"], nome=fase_atual["name"]),
+            finalizado=finalizado,
+            # Mensagem diferente quando chega no fim, como o desafio pede.
+            mensagem=(
+                f"O card chegou na fase final ({fase_atual['name']})."
+                if finalizado
+                else f"Card movido para a fase '{fase_atual['name']}'."
+            ),
+        )
+
+    @staticmethod
+    def _proxima_fase(
+        fases: list[dict[str, Any]], atual: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Retorna a fase seguinte à atual na ordem do pipe."""
+        if atual["done"]:
+            raise MovimentacaoInvalidaError(
+                f"O card já está na fase final ('{atual['name']}')."
+            )
+        ids = [fase["id"] for fase in fases]
+        posicao = ids.index(atual["id"])  # onde o card está na fila de fases
+        if posicao + 1 >= len(fases):
+            raise MovimentacaoInvalidaError("Não existe fase depois da atual.")
+        return fases[posicao + 1]
+
+    @staticmethod
+    def _encontrar_fase(fases: list[dict[str, Any]], destino: str) -> dict[str, Any]:
+        """Acha a fase pelo ID ou pelo nome (sem acento/maiúscula)."""
+        for fase in fases:
+            if fase["id"] == destino or normalizar(fase["name"]) == normalizar(destino):
+                return fase
+        raise FaseNaoEncontradaError(destino, [fase["name"] for fase in fases])
 
     async def deletar(self, card_id: int) -> None:
         """Apaga o card da Pessoa, se ele for do nosso pipe.

@@ -9,7 +9,12 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from app.clients.pipefy import PipefyError
-from app.services.pessoas import CardNaoEncontradoError, CidadeNaoEncontradaError
+from app.services.pessoas import (
+    CardNaoEncontradoError,
+    CidadeNaoEncontradaError,
+    FaseNaoEncontradaError,
+    MovimentacaoInvalidaError,
+)
 
 
 def registrar_handlers(app: FastAPI) -> None:
@@ -35,6 +40,28 @@ def registrar_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": str(exc)},
+        )
+
+        # 422: a fase de destino não existe; devolve as fases válidas.
+
+    @app.exception_handler(FaseNaoEncontradaError)
+    async def fase_nao_encontrada(
+        _: Request, exc: FaseNaoEncontradaError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": str(exc), "fases_validas": exc.opcoes},
+        )
+
+    # 409 Conflict: o pedido é válido, mas conflita com o estado atual do card
+    # (ex.: avançar um card que já está na fase final).
+    @app.exception_handler(MovimentacaoInvalidaError)
+    async def movimentacao_invalida(
+        _: Request, exc: MovimentacaoInvalidaError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
             content={"detail": str(exc)},
         )
 
