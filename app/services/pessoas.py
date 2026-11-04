@@ -4,13 +4,14 @@ Fica entre as rotas (HTTP) e o client (Pipefy): decide o que precisa ser
 consultado ou validado antes de criar, mover ou apagar um card.
 """
 
+import json
 import unicodedata
 from datetime import datetime
 from typing import Any
 
 from app.clients.pipefy import PipefyClient, PipefyError
 from app.core.config import Settings
-from app.schemas.card import CardCriado, Fase
+from app.schemas.card import CardCriado, CardDetalhe, CardResumo, Fase
 from app.schemas.pessoa import PessoaCreate
 
 
@@ -40,6 +41,16 @@ def normalizar(texto: str) -> str:
     # descarta o acento e o casefold deixa tudo minúsculo.
     sem_acento = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
     return sem_acento.casefold().strip()
+
+
+def converter_valor(valor: str | None) -> Any:
+    """Checklist e connector chegam como texto JSON ('["Leitura"]'): vira lista."""
+    if valor and valor.startswith("["):
+        try:
+            return json.loads(valor)  # '["Leitura"]' -> ["Leitura"]
+        except json.JSONDecodeError:
+            pass  # era só um texto começando com "[": devolve como veio
+    return valor
 
 
 class PessoaService:
@@ -94,6 +105,52 @@ class PessoaService:
             fase=Fase(
                 id=card["current_phase"]["id"], nome=card["current_phase"]["name"]
             ),
+        )
+
+    async def listar(self, fase: str | None = None) -> list[CardResumo]:
+        """Lista os cards do pipe, do mais novo para o mais antigo.
+
+        Se `fase` vier preenchida, filtra pelo nome da fase (sem acento/maiúscula).
+        """
+        cards = await self._client.list_cards(self._settings.pipefy_pipe_id)
+
+        # Traduz cada card do Pipefy para o nosso formato resumido.
+        resumos = [
+            CardResumo(
+                id=card["id"],
+                titulo=card["title"],
+                fase=Fase(
+                    id=card["current_phase"]["id"], nome=card["current_phase"]["name"]
+                ),
+                criado_em=card["created_at"],
+            )
+            for card in cards
+        ]
+
+        # Filtro opcional: "concluido" encontra "Concluído".
+        if fase:
+            resumos = [
+                r for r in resumos if normalizar(r.fase.nome) == normalizar(fase)
+            ]
+
+        # Mais novos primeiro: facilita achar o card que acabou de ser criado.
+        return sorted(resumos, key=lambda r: r.criado_em, reverse=True)
+
+    async def detalhar(self, card_id: int) -> CardDetalhe:
+        """Retorna um card completo. Lança `CardNaoEncontradoError` se não for nosso."""
+        card = await self._buscar_card(card_id)  # reaproveita a checagem do passo 5
+        return CardDetalhe(
+            id=card["id"],
+            titulo=card["title"],
+            url=card["url"],
+            fase=Fase(
+                id=card["current_phase"]["id"], nome=card["current_phase"]["name"]
+            ),
+            criado_em=card["created_at"],
+            # Lista de {field, value} do Pipefy -> dicionário {"cpf": "...", ...}
+            campos={
+                c["field"]["id"]: converter_valor(c["value"]) for c in card["fields"]
+            },
         )
 
     async def deletar(self, card_id: int) -> None:

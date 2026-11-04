@@ -3,7 +3,7 @@
 from fastapi import APIRouter, status
 
 from app.api.dependencies import PessoaServiceDep
-from app.schemas.card import CardCriado
+from app.schemas.card import CardCriado, CardDetalhe, CardResumo
 from app.schemas.pessoa import PessoaCreate
 
 # Todas as rotas deste arquivo começam com /pessoas.
@@ -26,3 +26,20 @@ async def criar_pessoa(
 async def deletar_pessoa(card_id: int, service: PessoaServiceDep) -> None:
     """Apaga o card da Pessoa. Só aceita cards do pipe de Pessoas."""
     await service.deletar(card_id)
+
+
+# Parâmetro fora da URL ({...}) e de tipo simples = query string: /pessoas?fase=Fazendo
+@router.get("")
+async def listar_pessoas(
+    service: PessoaServiceDep,
+    fase: str | None = None,  # opcional: sem ele, lista todos
+) -> list[CardResumo]:
+    """Lista os cards do pipe (resumo). Filtro opcional pelo nome da fase."""
+    return await service.listar(fase)
+
+
+# {card_id} vem da URL: GET /pessoas/123
+@router.get("/{card_id}")
+async def detalhar_pessoa(card_id: int, service: PessoaServiceDep) -> CardDetalhe:
+    """Retorna um card completo, com todos os campos preenchidos."""
+    return await service.detalhar(card_id)

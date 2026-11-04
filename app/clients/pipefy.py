@@ -114,16 +114,19 @@ class PipefyClient:
         return data["createCard"]["card"]
 
     async def get_card(self, card_id: int) -> dict[str, Any]:
-        """Busca um card: título, pipe a que pertence e fase atual."""
-        # Pedimos o pipe para conferir se o card é nosso, e a fase atual,
-        # que o passo 6 (avançar fase) também vai usar.
+        """Busca um card com pipe, fase atual e valores dos campos."""
+        # O pipe serve para conferir se o card é nosso; a fase e os campos
+        # alimentam a consulta e o passo 6 (avançar fase).
         query = """
         query ($cardId: ID!) {
           card(id: $cardId) {
             id
             title
+            url
+            created_at
             pipe { id }
             current_phase { id name done }
+            fields { field { id } value }
           }
         }
         """
@@ -139,3 +142,25 @@ class PipefyClient:
         }
         """
         await self.execute(mutation, {"cardId": card_id})
+
+    async def list_cards(self, pipe_id: int) -> list[dict[str, Any]]:
+        """Lista todos os cards do pipe (id, título, fase e data de criação)."""
+        query = """
+        query ($pipeId: ID!, $after: String) {
+          allCards(pipeId: $pipeId, first: 50, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            edges { node { id title created_at current_phase { id name } } }
+          }
+        }
+        """
+        cards: list[dict[str, Any]] = []
+        after = None  # cursor: "continue a partir daqui"; None = do começo
+
+        # O Pipefy devolve no máximo 50 por vez: pedimos página por página.
+        while True:
+            data = await self.execute(query, {"pipeId": pipe_id, "after": after})
+            pagina = data["allCards"]
+            cards += [edge["node"] for edge in pagina["edges"]]  # junta esta página
+            if not pagina["pageInfo"]["hasNextPage"]:
+                return cards  # acabou: devolve tudo que juntou
+            after = pagina["pageInfo"]["endCursor"]  # marcador para a próxima
