@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from app.clients.pipefy import PipefyError
-from app.services.pessoas import CidadeNaoEncontradaError
+from app.services.pessoas import CardNaoEncontradoError, CidadeNaoEncontradaError
 
 
 def registrar_handlers(app: FastAPI) -> None:
@@ -26,6 +26,16 @@ def registrar_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             # Devolve a mensagem e as opções válidas, para o cliente corrigir.
             content={"detail": str(exc), "cidades_validas": exc.opcoes},
+        )
+
+    # 404: o card não existe (ou é de outro pipe, que não podemos mexer).
+    @app.exception_handler(CardNaoEncontradoError)
+    async def card_nao_encontrado(
+        _: Request, exc: CardNaoEncontradoError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": str(exc)},
         )
 
     # 502: o Pipefy devolveu "errors"; a falha é do sistema de trás, não do cliente.

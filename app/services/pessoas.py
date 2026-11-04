@@ -8,7 +8,7 @@ import unicodedata
 from datetime import datetime
 from typing import Any
 
-from app.clients.pipefy import PipefyClient
+from app.clients.pipefy import PipefyClient, PipefyError
 from app.core.config import Settings
 from app.schemas.card import CardCriado, Fase
 from app.schemas.pessoa import PessoaCreate
@@ -24,6 +24,14 @@ class CidadeNaoEncontradaError(Exception):
         self.nome = nome
         self.opcoes = opcoes
         super().__init__(f"Cidade '{nome}' não encontrada.")
+
+
+class CardNaoEncontradoError(Exception):
+    """O card não existe ou não pertence ao pipe de Pessoas."""
+
+    def __init__(self, card_id: int) -> None:
+        self.card_id = card_id  # guardado para quem tratar o erro, se precisar
+        super().__init__(f"Card {card_id} não encontrado no pipe de Pessoas.")
 
 
 def normalizar(texto: str) -> str:
@@ -87,6 +95,27 @@ class PessoaService:
                 id=card["current_phase"]["id"], nome=card["current_phase"]["name"]
             ),
         )
+
+    async def deletar(self, card_id: int) -> None:
+        """Apaga o card da Pessoa, se ele for do nosso pipe.
+
+        Lança `CardNaoEncontradoError` se o card não existir ou for de outro pipe.
+        """
+        await self._buscar_card(card_id)  # garante que o card é do nosso pipe
+        await self._client.delete_card(card_id)  # só então apaga
+
+    async def _buscar_card(self, card_id: int) -> dict[str, Any]:
+        """Busca o card e confere se ele pertence ao pipe de Pessoas."""
+        try:
+            card = await self._client.get_card(card_id)
+        except PipefyError as exc:
+            # Para IDs inexistentes o Pipefy responde "Acesso negado".
+            raise CardNaoEncontradoError(card_id) from exc
+
+        # O pipe é compartilhado: nunca mexemos em cards de outro pipe.
+        if card is None or card["pipe"]["id"] != str(self._settings.pipefy_pipe_id):
+            raise CardNaoEncontradoError(card_id)
+        return card
 
     @staticmethod
     def _montar_campos(pessoa: PessoaCreate, cidade_id: str) -> dict[str, Any]:
