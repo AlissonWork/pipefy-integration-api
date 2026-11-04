@@ -3,7 +3,7 @@
 from fastapi import APIRouter, status
 
 from app.api.dependencies import PessoaServiceDep
-from app.schemas.card import CardCriado, CardDetalhe, CardResumo
+from app.schemas.card import CardCriado, CardDetalhe, CardMovido, CardResumo, MoverFase
 from app.schemas.pessoa import PessoaCreate
 
 # Todas as rotas deste arquivo começam com /pessoas.
@@ -43,3 +43,18 @@ async def listar_pessoas(
 async def detalhar_pessoa(card_id: int, service: PessoaServiceDep) -> CardDetalhe:
     """Retorna um card completo, com todos os campos preenchidos."""
     return await service.detalhar(card_id)
+
+
+# PATCH = alteração parcial do recurso (aqui, só a fase do card).
+@router.patch("/{card_id}/fase")
+async def mover_fase(
+    card_id: int,
+    service: PessoaServiceDep,
+    dados: MoverFase | None = None,  # corpo opcional: sem ele, avança uma fase
+) -> CardMovido:
+    """Avança o card para a próxima fase ou move para a fase `destino`.
+
+    Quando o card chega na fase final, a resposta traz `finalizado: true`.
+    """
+    destino = dados.destino if dados else None  # sem corpo -> None -> avançar
+    return await service.mover_fase(card_id, destino)

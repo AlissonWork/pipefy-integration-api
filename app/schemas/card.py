@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Fase(BaseModel):
@@ -40,3 +40,24 @@ class CardDetalhe(BaseModel):
     fase: Fase
     criado_em: datetime
     campos: dict[str, Any]  # id do campo -> valor (ex.: "cpf" -> "529...")
+
+
+class MoverFase(BaseModel):
+    """Corpo (opcional) do PATCH de fase.
+
+    Sem `destino`, o card avança para a próxima fase do pipe.
+    """
+
+    # Nome ("Concluído", "fazendo") ou ID da fase de destino.
+    destino: str | None = Field(default=None, examples=["Concluído"])
+
+
+class CardMovido(BaseModel):
+    """Resposta da mudança de fase."""
+
+    id: str
+    titulo: str
+    fase_anterior: Fase
+    fase_atual: Fase
+    finalizado: bool  # True quando o card chegou na fase final do pipe
+    mensagem: str  # explicação legível do que aconteceu

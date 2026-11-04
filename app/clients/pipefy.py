@@ -164,3 +164,18 @@ class PipefyClient:
             if not pagina["pageInfo"]["hasNextPage"]:
                 return cards  # acabou: devolve tudo que juntou
             after = pagina["pageInfo"]["endCursor"]  # marcador para a próxima
+
+    async def move_card(self, card_id: int, phase_id: str) -> dict[str, Any]:
+        """Move o card para outra fase e retorna a fase em que ele ficou."""
+        # Pedimos de volta a fase atual com "done" para saber se é a final.
+        mutation = """
+        mutation ($cardId: ID!, $phaseId: ID!) {
+          moveCardToPhase(
+            input: { card_id: $cardId, destination_phase_id: $phaseId }
+          ) {
+            card { id current_phase { id name done } }
+          }
+        }
+        """
+        data = await self.execute(mutation, {"cardId": card_id, "phaseId": phase_id})
+        return data["moveCardToPhase"]["card"]
