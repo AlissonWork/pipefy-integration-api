@@ -1,0 +1,29 @@
+meta {
+  name: 13 - Erro - CPF inválido
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{baseUrl}}/pessoas
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "nome": "Teste Alisson - Erro",
+    "cidade": "Fortaleza",
+    "cpf": "111.111.111-11",
+    "data_de_nascimento": "2999-01-01"
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+
+docs {
+  422 gerado pela validação de entrada: CPF com dígitos repetidos e data de
+  nascimento no futuro. Os dois erros vêm juntos, e o Pipefy nem é chamado.
+}

@@ -1,0 +1,19 @@
+meta {
+  name: 06 - Detalhar Pessoa
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/pessoas/{{cardId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Mostra o card completo, com os campos como ficaram salvos no Pipefy.
+}

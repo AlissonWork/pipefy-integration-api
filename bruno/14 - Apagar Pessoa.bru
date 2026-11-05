@@ -1,0 +1,19 @@
+meta {
+  name: 14 - Apagar Pessoa
+  type: http
+  seq: 14
+}
+
+delete {
+  url: {{baseUrl}}/pessoas/{{cardId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  Apaga o card da demonstração. 204 = deu certo e não há conteúdo para devolver.
+}

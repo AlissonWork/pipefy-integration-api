@@ -1,0 +1,40 @@
+meta {
+  name: 04 - Cadastrar Pessoa
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/pessoas
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "nome": "Teste Alisson - Demonstração",
+    "cidade": "fortaleza",
+    "cpf": "52998224725",
+    "data_de_nascimento": "1995-08-20",
+    "telefone": "85900000000",
+    "sexo": "Masculino",
+    "hobbies": ["Leitura", "Cinema"]
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+script:post-response {
+  // Guarda o ID do card criado para as próximas requisições.
+  if (res.status === 201) {
+    bru.setVar("cardId", res.body.id);
+  }
+}
+
+docs {
+  Cria o card na primeira fase. Repare que:
+  - a cidade foi enviada em minúsculas e mesmo assim é encontrada;
+  - o CPF foi enviado sem máscara e é salvo como 529.982.247-25.
+}

@@ -1,0 +1,19 @@
+meta {
+  name: 03 - Cidades
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/cidades
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Cidades aceitas no cadastro (registros da tabela ligada ao campo Cidade).
+}

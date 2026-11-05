@@ -1,0 +1,26 @@
+meta {
+  name: 10 - Mover para fase específica
+  type: http
+  seq: 10
+}
+
+patch {
+  url: {{baseUrl}}/pessoas/{{cardId}}/fase
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "destino": "caixa de entrada"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Com "destino", o card vai direto para a fase indicada (pelo nome, sem
+  diferenciar acento e maiúsculas, ou pelo ID da fase).
+}
