@@ -1,0 +1,7 @@
+# Sobe a API com "docker compose up --build".
+services:
+  api:
+    build: .
+    env_file: .env    # token e IDs vêm do .env, nunca da imagem
+    ports:
+      - "8000:8000"   # porta do computador : porta do contêiner

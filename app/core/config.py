@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     """Cada atributo é preenchido pela variável de ambiente de mesmo nome.
 
     Ex.: `pipefy_token` <- `PIPEFY_TOKEN`. Se um campo obrigatório faltar ou
-    vier no tipo errado, a aplicação nem sobe (fail fast).
+    vier no tipo errado, o Pydantic acusa qual é na primeira requisição.
     """
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
