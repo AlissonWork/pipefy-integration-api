@@ -1,0 +1,24 @@
+meta {
+  name: 05 - Listar Pessoas
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/pessoas?fase=caixa%20de%20entrada
+  body: none
+  auth: none
+}
+
+params:query {
+  fase: caixa%20de%20entrada
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Lista os cards da fase, do mais novo para o mais antigo: o card recém-criado
+  aparece primeiro. A listagem não traz dados pessoais (só ID, título e fase).
+}

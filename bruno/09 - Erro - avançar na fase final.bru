@@ -1,0 +1,19 @@
+meta {
+  name: 09 - Erro - avançar na fase final
+  type: http
+  seq: 9
+}
+
+patch {
+  url: {{baseUrl}}/pessoas/{{cardId}}/fase
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 409
+}
+
+docs {
+  409 Conflict: o pedido é válido, mas o card já está na fase final.
+}

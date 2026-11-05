@@ -1,0 +1,20 @@
+meta {
+  name: 07 - Avançar fase (Fazendo)
+  type: http
+  seq: 7
+}
+
+patch {
+  url: {{baseUrl}}/pessoas/{{cardId}}/fase
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.finalizado: eq false
+}
+
+docs {
+  Sem corpo, o card avança para a próxima fase: Caixa de entrada -> Fazendo.
+}

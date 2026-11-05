@@ -1,0 +1,25 @@
+meta {
+  name: 11 - Erro - fase inexistente
+  type: http
+  seq: 11
+}
+
+patch {
+  url: {{baseUrl}}/pessoas/{{cardId}}/fase
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "destino": "Arquivado"
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+
+docs {
+  422: a fase não existe. A resposta lista as fases válidas em "fases_validas".
+}

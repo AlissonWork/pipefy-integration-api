@@ -1,0 +1,27 @@
+meta {
+  name: 12 - Erro - cidade inexistente
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/pessoas
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "nome": "Teste Alisson - Erro",
+    "cidade": "Recife"
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+
+docs {
+  422: a cidade não está na tabela. A resposta lista as cidades válidas em
+  "cidades_validas". Nenhum card é criado.
+}

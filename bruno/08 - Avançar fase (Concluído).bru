@@ -1,0 +1,21 @@
+meta {
+  name: 08 - Avançar fase (Concluído)
+  type: http
+  seq: 8
+}
+
+patch {
+  url: {{baseUrl}}/pessoas/{{cardId}}/fase
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.finalizado: eq true
+}
+
+docs {
+  Fazendo -> Concluído. É a fase final: a resposta traz "finalizado": true
+  e a mensagem avisando que o card chegou ao fim.
+}
