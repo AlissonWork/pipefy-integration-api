@@ -1,0 +1,4 @@
+# Configuração das ferramentas do projeto (o pytest).
+[tool.pytest.ini_options]
+testpaths = ["tests"]  # onde procurar os testes
+pythonpath = ["."]     # raiz do projeto no caminho de import, para achar o "app"
