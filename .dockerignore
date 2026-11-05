@@ -1,0 +1,12 @@
+# Fica fora da imagem: segredos, ambiente local, caches e arquivos de desenvolvimento.
+.env
+.venv/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.vscode/
+tests/
+bruno/
+docs/

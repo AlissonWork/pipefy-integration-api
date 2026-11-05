@@ -12,11 +12,11 @@ permite criar, consultar, mover entre fases e apagar esses cards.
 - [Como rodar](#como-rodar)
 - [Endpoints](#endpoints)
 - [Exemplos de uso](#exemplos-de-uso)
+- [Testes](#testes)
 - [Tratamento de erros](#tratamento-de-erros)
 - [Arquitetura](#arquitetura)
 - [Decisões técnicas](#decisões-técnicas)
 - [Demonstração](#demonstração)
-- [Próximos passos](#próximos-passos)
 
 ## Funcionalidades
 
@@ -42,12 +42,14 @@ estrutura do pipe e listar as cidades aceitas no cadastro.
 | **httpx** | cliente HTTP assíncrono para a API GraphQL do Pipefy |
 | **Uvicorn** | servidor ASGI |
 | **Ruff** | lint e formatação |
+| **pytest** | testes automatizados |
+| **Docker** | execução em contêiner, sem instalar Python |
 
 ## Como rodar
 
 ### 1. Pré-requisitos
 
-- Python 3.14 (versão em que o projeto foi desenvolvido e testado)
+- Python 3.14 (versão em que o projeto foi desenvolvido e testado) **ou** Docker
 - Um token de acesso à API do Pipefy com permissão no pipe
 
 ### 2. Clonar e instalar
@@ -63,7 +65,7 @@ source .venv/Scripts/activate   # Windows (Git Bash)
 pip install -r requirements-dev.txt
 ```
 
-> `requirements-dev.txt` instala as dependências da aplicação e o Ruff.
+> `requirements-dev.txt` instala as dependências da aplicação, o Ruff e o pytest.
 > Para só rodar a API, `requirements.txt` basta.
 
 ### 3. Configurar o `.env`
@@ -97,6 +99,19 @@ uvicorn app.main:app --reload
 | http://127.0.0.1:8000/docs | documentação interativa (Swagger), dá para testar tudo por ali |
 | http://127.0.0.1:8000/redoc | documentação em formato de leitura |
 | http://127.0.0.1:8000/health | verificação rápida de que a API está no ar |
+
+### Alternativa: rodar com Docker
+
+Sem instalar Python, só com o Docker. Depois de clonar e criar o `.env` (passo 3):
+
+```bash
+docker compose up --build
+```
+
+A API sobe no mesmo endereço (http://127.0.0.1:8000/docs). O `.env` é lido na hora
+de rodar e não entra na imagem. Para parar, `Ctrl+C`.
+
+> Se o `uvicorn` local estiver rodando, pare-o antes: os dois usam a porta 8000.
 
 ### 5. Qualidade de código
 
@@ -222,6 +237,23 @@ curl http://127.0.0.1:8000/pessoas/1474000000
 ```bash
 curl -X DELETE http://127.0.0.1:8000/pessoas/1474000000   # 204 No Content
 ```
+
+## Testes
+
+```bash
+pytest -v
+```
+
+Os testes **não chamam o Pipefy e não precisam de token**: o client do Pipefy é
+trocado por um client falso em memória (`tests/conftest.py`), usando a injeção de
+dependência do FastAPI. Rotas, validações, regras do service e tratamento de erros
+rodam de verdade.
+
+| Grupo | O que é testado |
+|---|---|
+| Criar (`POST`) | cadastro na primeira fase, CPF formatado, cidade sem acento e duplicada, cidade inexistente (422), CPF inválido (422) |
+| Mover fase (`PATCH`) | próxima fase, aviso de fase final, fase final (409), destino pelo nome, destino inexistente (422) |
+| Apagar (`DELETE`) | exclusão (204), card inexistente (404), card de outro pipe não é apagado (404) |
 
 ## Tratamento de erros
 
