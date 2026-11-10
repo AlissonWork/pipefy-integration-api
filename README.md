@@ -279,54 +279,6 @@ o botão direito na coleção → **Run**. O endereço `http://127.0.0.1:8000` j
 
 ---
 
-## 🧠 Decisões técnicas
-
-### 1. Proteção do pipe compartilhado
-- **Problema:** o token pertence a uma conta que pode ter outros pipes, e o Pipefy aceitaria
-  apagar ou mover um card de qualquer um deles pelo ID.
-- **Decisão:** antes de detalhar, mover ou apagar, a API busca o card e confere se ele é do
-  pipe configurado. Se não for, responde `404` sem tocar no card.
-- **Resultado:** a API nunca altera nada fora do próprio pipe, e há um teste que garante isso.
-
-### 2. Fases lidas do Pipefy, não escritas no código
-- **Problema:** escrever "Caixa de entrada → Fazendo → Concluído" no código quebraria a API
-  na primeira vez que alguém mudasse o quadro.
-- **Decisão:** a ordem das fases e qual delas é a final (`done`) vêm do próprio pipe a cada
-  movimentação.
-- **Resultado:** a API acompanha mudanças no pipe sem precisar de deploy.
-
-### 3. Cidade pelo nome, convertida para o ID
-- **Problema:** o Pipefy exige o ID do registro da tabela de cidades, que não faz sentido
-  para quem usa a API. Além disso, a tabela tem uma cidade duplicada.
-- **Decisão:** a API recebe o nome, compara sem acento e maiúsculas e, havendo duplicata,
-  usa o registro original (menor ID). Se não encontrar, o erro lista as opções válidas.
-- **Resultado:** `"eusebio"` encontra `"Eusébio"`, e quem errou a cidade já sabe como corrigir.
-
-### 4. Validação antes de chamar o Pipefy
-- **Problema:** dados inválidos criariam cards inválidos no pipe.
-- **Decisão:** os schemas validam tudo na entrada: CPF pelos dígitos verificadores (e rejeitando
-  sequências como `111.111.111-11`), data de nascimento no passado e opções de sexo e hobbies
-  restritas às do formulário.
-- **Resultado:** dado inválido recebe `422` e nunca chega ao Pipefy.
-
-### 5. Erros com o status certo
-- **Problema:** o GraphQL do Pipefy responde `200` mesmo com erro, e um erro mal traduzido
-  esconde de quem é a culpa.
-- **Decisão:** o client transforma `errors` em exceção, e um único módulo (`api/errors.py`)
-  converte cada exceção no status adequado.
-- **Resultado:** `4xx` quando o problema está no pedido, `5xx` quando está no Pipefy. Veja
-  [Tratamento de erros](#-tratamento-de-erros).
-
-### 6. Segurança e dados pessoais
-- **Token:** fica só no `.env` (fora do Git) e é guardado como `SecretStr`, que não aparece em
-  logs nem em mensagens de erro.
-- **Consultas GraphQL com variáveis:** os valores nunca são colados no texto da query, o que
-  evita *injection*.
-- **Minimização de dados (LGPD):** a listagem devolve só ID, título, fase e data. CPF e
-  telefone só aparecem no detalhe de um card específico.
-
----
-
 ## 🚨 Tratamento de erros
 
 | Status | Quando | Exemplo de resposta |
