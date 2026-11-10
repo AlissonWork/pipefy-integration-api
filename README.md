@@ -32,7 +32,7 @@ cria, consulta, move entre fases e apaga, avisando quando o card chega ao fim do
 |---|---|
 | **O que é** | uma API REST que integra um cadastro de Pessoas ao Pipefy pela API GraphQL |
 | **Requisitos** | criar o card, apagar pelo ID e avançar ou mudar a fase, avisando na fase final |
-| **Rotas** | 8: os 3 requisitos, mais consulta de cards, estrutura do pipe, cidades e health |
+| **Rotas** | cobre os 3 requisitos, mais consulta de cards, estrutura do pipe, cidades e health |
 | **Testes** | 13, rodando em menos de 1 segundo, **sem token e sem internet** |
 | **Para rodar** | Python 3.14 ou só o Docker (`docker compose up --build`) |
 
