@@ -1,58 +1,418 @@
+<div align="center">
+
 # Pipefy Integration API
 
-API em Python que integra um **cadastro de Pessoas** ao [Pipefy](https://www.pipefy.com/).
-Cada Pessoa cadastrada vira um **card** no pipe *Desafio - Vaga Profectum 2026*, e a API
-permite criar, consultar, mover entre fases e apagar esses cards.
+**API em Python que transforma um cadastro de Pessoas em cards do Pipefy:
+cria, consulta, move entre fases e apaga, avisando quando o card chega ao fim do fluxo.**
 
+![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.162-009688?logo=fastapi&logoColor=white)
+![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)
+![GraphQL](https://img.shields.io/badge/Pipefy-GraphQL-E10098?logo=graphql&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-13%20passed-0A9EDC?logo=pytest&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-pronto-2496ED?logo=docker&logoColor=white)
+![Ruff](https://img.shields.io/badge/Ruff-lint%20%2B%20format-D7FF64?logo=ruff&logoColor=black)
 
-## Sumário
+[O desafio](#-o-desafio) •
+[O Pipefy](#-entendendo-o-pipefy) •
+[Arquitetura](#-arquitetura) •
+[Endpoints](#-endpoints) •
+[Demonstração](#-demonstração) •
+[Decisões](#-decisões-técnicas) •
+[Qualidade](#-qualidade) •
+[Como rodar](#-como-rodar)
 
-- [Funcionalidades](#funcionalidades)
-- [Tecnologias](#tecnologias)
-- [Como rodar](#como-rodar)
-- [Endpoints](#endpoints)
-- [Exemplos de uso](#exemplos-de-uso)
-- [Testes](#testes)
-- [Tratamento de erros](#tratamento-de-erros)
-- [Arquitetura](#arquitetura)
-- [Decisões técnicas](#decisões-técnicas)
-- [Demonstração](#demonstração)
+</div>
 
-## Funcionalidades
+---
 
-Os três requisitos do desafio:
+## 📌 Em resumo
 
-| Requisito | Endpoint |
+| | |
 |---|---|
-| Criar um card com os campos da Pessoa | `POST /pessoas` |
-| Excluir um card pelo ID | `DELETE /pessoas/{id}` |
-| Avançar ou mudar a fase do card, avisando quando chega na fase final | `PATCH /pessoas/{id}/fase` |
+| **O que é** | uma API REST que integra um cadastro de Pessoas ao Pipefy pela API GraphQL |
+| **Requisitos** | criar o card, apagar pelo ID e avançar ou mudar a fase, avisando na fase final |
+| **Rotas** | 8: os 3 requisitos, mais consulta de cards, estrutura do pipe, cidades e health |
+| **Testes** | 13, rodando em menos de 1 segundo, **sem token e sem internet** |
+| **Para rodar** | Python 3.14 ou só o Docker (`docker compose up --build`) |
 
-Além deles, a API oferece rotas de apoio: listar e detalhar cards, consultar a
-estrutura do pipe e listar as cidades aceitas no cadastro.
+---
 
-## Tecnologias
+## 🎯 O desafio
 
-| Ferramenta | Uso |
+Construir uma API em Python que se integre a um **pipe do Pipefy** usado para cadastrar
+Pessoas, com três operações:
+
+| # | Requisito | Rota | Resposta |
+|:-:|---|---|:-:|
+| 1 | Criar um card com os campos da Pessoa | `POST /pessoas` | `201` |
+| 2 | Excluir um card pelo ID | `DELETE /pessoas/{id}` | `204` |
+| 3 | Avançar ou mudar a fase do card e **avisar quando ele chega na fase final** | `PATCH /pessoas/{id}/fase` | `200` |
+
+---
+
+## 🧭 Entendendo o Pipefy
+
+O Pipefy organiza processos em quadros, parecido com um kanban. Antes de escrever código,
+explorei a API GraphQL para entender como o pipe do desafio é montado.
+
+| Conceito | O que é | Neste projeto |
+|---|---|---|
+| **Pipe** | o quadro do processo | *Desafio - Vaga Profectum 2026* |
+| **Fase** | uma coluna do quadro | Caixa de entrada → Fazendo → Concluído |
+| **Card** | um item que anda pelas fases | uma Pessoa cadastrada |
+| **Formulário inicial** | os campos preenchidos ao criar o card | nome, CPF, cidade, hobbies... |
+| **Database (tabela)** | uma lista de registros reaproveitáveis | as cidades aceitas no cadastro |
+| **Connector** | um campo que aponta para registros de uma tabela | o campo Cidade |
+
+```mermaid
+flowchart LR
+    F["📝 Formulário inicial<br/>campos da Pessoa"] --> A
+    T[("🗂️ Tabela de cidades")] -. "campo Cidade<br/>(connector)" .-> F
+    subgraph PIPE ["Pipe: Desafio - Vaga Profectum 2026"]
+        direction LR
+        A["📥 Caixa de entrada"] --> B["⚙️ Fazendo"] --> C["✅ Concluído<br/>fase final"]
+    end
+```
+
+### Campos do formulário
+
+| Campo | Tipo no Pipefy | Obrigatório | Como a API envia |
+|---|---|:-:|---|
+| Nome | texto curto | ✅ | texto; vira também o título do card |
+| Cidade | connector | ✅ | lista com o **ID** do registro da tabela: `["850256930"]` |
+| CPF | CPF | | `000.000.000-00` |
+| Data de nascimento | data | | `AAAA-MM-DD` |
+| Telefone | telefone | | texto |
+| Sexo | opção única | | uma das opções do formulário |
+| Hobbies | checklist | | lista de opções: `["Leitura", "Cinema"]` |
+| Data de envio | data e hora | | preenchida automaticamente pela API |
+
+### O que descobri explorando a API
+
+Validei o formato de cada campo criando cards de teste (e apagando em seguida). No caminho,
+apareceram comportamentos que influenciaram o código:
+
+| Descoberta | Como a API lida com isso |
 |---|---|
-| **Python 3.14** | linguagem |
-| **FastAPI** | framework web, validação e documentação automática (Swagger) |
-| **Pydantic v2** | schemas de entrada e saída, validações |
-| **pydantic-settings** | configuração via variáveis de ambiente (`.env`) |
-| **httpx** | cliente HTTP assíncrono para a API GraphQL do Pipefy |
-| **Uvicorn** | servidor ASGI |
-| **Ruff** | lint e formatação |
-| **pytest** | testes automatizados |
-| **Docker** | execução em contêiner, sem instalar Python |
+| A API GraphQL usa sempre `POST` e responde **`200` mesmo quando dá erro**: a falha vem na chave `errors` | o client confere `errors` e lança uma exceção, que vira `502` |
+| Buscar um card que não existe retorna **"Acesso negado"**, e não "não encontrado" | o service traduz para `404` |
+| O campo Cidade exige o **ID do registro** da tabela, não o nome | a API recebe o nome e converte para o ID |
+| A tabela de cidades tem **`Fortaleza` duplicada** (`Fortaleza` e `fortaleza`) | a comparação ignora acento e maiúsculas e escolhe o registro original (menor ID) |
+| Checklist e connector voltam como **texto JSON** (`'["Leitura"]'`) | o detalhe do card converte de volta para lista |
+| Mover um card para a fase em que ele já está gera erro no Pipefy | a API barra antes, com `409` e uma mensagem clara |
+| A listagem de cards vem em **páginas de até 50** | a API pede página por página até juntar todos |
 
-## Como rodar
+---
 
-### 1. Pré-requisitos
+## 🧱 Arquitetura
 
-- Python 3.14 (versão em que o projeto foi desenvolvido e testado) **ou** Docker
-- Um token de acesso à API do Pipefy com permissão no pipe
+O código é dividido em camadas. Cada uma tem **uma responsabilidade** e só conversa
+com a camada vizinha.
 
-### 2. Clonar e instalar
+```mermaid
+flowchart TD
+    U["👤 Cliente<br/>Swagger, Bruno ou curl"] -->|"HTTP + JSON"| R
+    subgraph API ["Pipefy Integration API"]
+        R["<b>api/routes</b><br/>recebe a requisição<br/>e devolve a resposta"] --> S["<b>services</b><br/>regras de negócio"]
+        S --> C["<b>clients</b><br/>conversa com o Pipefy"]
+        SC["<b>schemas</b><br/>formato dos dados"] -.-> R
+        E["<b>api/errors</b><br/>exceção → status HTTP"] -.-> R
+        CO["<b>core</b><br/>configurações do .env"] -.-> C
+    end
+    C -->|"GraphQL + token"| P[("☁️ Pipefy")]
+```
+
+| Camada | Responsabilidade | Não sabe de... |
+|---|---|---|
+| **`api/routes`** | receber a requisição, validar pelo schema, definir o status de sucesso | Pipefy, GraphQL |
+| **`schemas`** | o formato do que **entra** (com validações) e do que **sai** | de onde os dados vêm |
+| **`services`** | regras: resolver a cidade, escolher a próxima fase, conferir se o card é do pipe | HTTP, GraphQL |
+| **`clients`** | montar as queries GraphQL, enviar o token, tratar a resposta do Pipefy | regras de negócio |
+| **`core`** | configurações lidas do `.env` (token, IDs, timeout) | todo o resto |
+| **`api/errors`** | traduzir cada exceção no status HTTP certo, num lugar só | como o erro aconteceu |
+
+### Estrutura de pastas
+
+```
+app/
+├── main.py                 # cria o app e registra as rotas e o tratamento de erros
+├── core/
+│   └── config.py           # Settings: configurações lidas do .env
+├── api/
+│   ├── dependencies.py     # injeção de dependência: Settings → Client → Service
+│   ├── errors.py           # exceções da aplicação → respostas HTTP
+│   └── routes/
+│       ├── pessoas.py      # POST, GET, PATCH e DELETE de /pessoas
+│       └── pipe.py         # /pipe e /cidades
+├── schemas/
+│   ├── pessoa.py           # entrada do cadastro e validações (CPF, data, opções)
+│   └── card.py             # formatos de resposta e o pedido de mudança de fase
+├── services/
+│   └── pessoas.py          # regras de negócio
+└── clients/
+    └── pipefy.py           # client da API GraphQL do Pipefy
+tests/                      # testes com um Pipefy falso em memória
+bruno/                      # coleção de requisições para a demonstração
+```
+
+### Uma requisição de ponta a ponta
+
+O caminho de `PATCH /pessoas/{id}/fase`, o requisito mais completo:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Cliente
+    participant R as Rota
+    participant S as Service
+    participant C as Client
+    participant P as Pipefy
+
+    U->>R: PATCH /pessoas/123/fase
+    R->>S: mover_fase(123, destino)
+    S->>C: get_card(123)
+    C->>P: query card
+    P-->>C: card, pipe e fase atual
+    Note over S: o card é deste pipe? (senão 404)
+    S->>C: get_pipe(pipe_id)
+    C->>P: query pipe
+    P-->>C: fases em ordem, com "done"
+    Note over S: escolhe a próxima fase ou o destino (409 ou 422 se não der)
+    S->>C: move_card(123, fase)
+    C->>P: mutation moveCardToPhase
+    P-->>C: nova fase atual
+    S-->>R: CardMovido (finalizado = done)
+    R-->>U: 200 + aviso se chegou na fase final
+```
+
+### Onde mexer se...
+
+| Se precisar... | Mexe em |
+|---|---|
+| adicionar um campo novo na Pessoa | `schemas/pessoa.py` (o campo) e `services/pessoas.py` (enviar ao Pipefy) |
+| trocar o pipe ou o token | só no `.env` |
+| o Pipefy mudar a API | só em `clients/pipefy.py` |
+| criar uma regra nova (ex.: não aceitar CPF repetido) | `services/pessoas.py` |
+| criar um erro novo com outro status | `services/` (a exceção) e `api/errors.py` (o status) |
+
+---
+
+## 🔌 Endpoints
+
+Com a API rodando, a documentação interativa fica em **http://127.0.0.1:8000/docs** (Swagger).
+
+### Pessoas
+
+| Método | Rota | O que faz | Sucesso |
+|---|---|---|:-:|
+| `POST` | `/pessoas` | cadastra a Pessoa, criando o card na primeira fase | `201` |
+| `GET` | `/pessoas` | lista os cards, do mais novo para o mais antigo (filtro opcional `?fase=`) | `200` |
+| `GET` | `/pessoas/{id}` | detalha um card com todos os campos | `200` |
+| `PATCH` | `/pessoas/{id}/fase` | avança o card ou move para a fase `destino` | `200` |
+| `DELETE` | `/pessoas/{id}` | apaga o card | `204` |
+
+### Apoio
+
+| Método | Rota | O que faz |
+|---|---|---|
+| `GET` | `/pipe` | estrutura do pipe: fases e campos do formulário |
+| `GET` | `/cidades` | cidades aceitas no campo Cidade |
+| `GET` | `/health` | confirma que a API está no ar |
+
+### Cadastro: campos aceitos (`POST /pessoas`)
+
+| Campo | Tipo | Obrigatório | Regras |
+|---|---|:-:|---|
+| `nome` | texto | ✅ | 2 a 120 caracteres |
+| `cidade` | texto | ✅ | precisa existir na tabela; aceita sem acento e em minúsculas |
+| `cpf` | texto | | dígitos verificadores validados; com ou sem máscara |
+| `data_de_nascimento` | data | | `AAAA-MM-DD`, não pode estar no futuro |
+| `telefone` | texto | | 8 a 20 caracteres |
+| `sexo` | opção | | `Masculino`, `Feminino` ou `Prefere não responder` |
+| `hobbies` | lista | | `Teatro`, `Música`, `Cinema`, `Esportes`, `Leitura`, `Viagem`, `Artes` |
+
+### Mudança de fase: o requisito 3
+
+```mermaid
+flowchart LR
+    N(["POST /pessoas"]) --> A["📥 Caixa de entrada"]
+    A -->|"PATCH"| B["⚙️ Fazendo"]
+    B -->|"PATCH"| C["✅ Concluído<br/>finalizado = true"]
+    C -. "PATCH com destino" .-> A
+```
+
+O `PATCH /pessoas/{id}/fase` funciona de dois jeitos:
+
+- **sem corpo**: avança para a **próxima** fase;
+- **com `{"destino": "..."}`**: vai direto para a fase indicada, pelo **nome**
+  (sem diferenciar acento e maiúsculas, ex.: `"concluido"`) ou pelo **ID** da fase.
+
+Ao chegar na fase final, a resposta avisa:
+
+```json
+{
+  "id": "1474000000",
+  "titulo": "Maria Silva",
+  "fase_anterior": { "id": "323403003", "nome": "Fazendo" },
+  "fase_atual": { "id": "323403004", "nome": "Concluído" },
+  "finalizado": true,
+  "mensagem": "O card chegou na fase final (Concluído)."
+}
+```
+
+> [!NOTE]
+> A fase final não está escrita no código: ela vem do próprio Pipefy (campo `done` da fase).
+> Se o pipe ganhar uma fase nova ou mudar a ordem, a API continua funcionando.
+
+---
+
+## 🎬 Demonstração
+
+A pasta [`bruno/`](bruno/) tem uma coleção do [Bruno](https://www.usebruno.com/) com o
+fluxo completo, em ordem. Cada requisição confere sozinha o status esperado, e o ID do
+card criado é guardado e reaproveitado nas seguintes.
+
+| # | Requisição | Mostra | Status |
+|:-:|---|---|:-:|
+| 01 | Health | a API está no ar | `200` |
+| 02 | Estrutura do pipe | fases e campos lidos do Pipefy | `200` |
+| 03 | Cidades | as cidades aceitas | `200` |
+| 04 | Cadastrar Pessoa | **requisito 1**: card criado (cidade em minúsculas, CPF sem máscara) | `201` |
+| 05 | Listar Pessoas | o card novo aparece primeiro, sem dados pessoais | `200` |
+| 06 | Detalhar Pessoa | os campos como ficaram no Pipefy (CPF formatado) | `200` |
+| 07 | Avançar fase | **requisito 3**: Caixa de entrada → Fazendo | `200` |
+| 08 | Avançar fase | Fazendo → Concluído, com **`finalizado: true`** | `200` |
+| 09 | Avançar na fase final | não existe fase depois da final | `409` |
+| 10 | Mover para fase específica | volta direto para a Caixa de entrada | `200` |
+| 11 | Fase inexistente | o erro lista as fases válidas | `422` |
+| 12 | Cidade inexistente | o erro lista as cidades válidas | `422` |
+| 13 | CPF inválido | barrado antes de chegar ao Pipefy | `422` |
+| 14 | Apagar Pessoa | **requisito 2**: card apagado | `204` |
+| 15 | Card inexistente | o card apagado agora responde `404` | `404` |
+
+**Para rodar:** no Bruno, **Open Collection** → pasta `bruno/` → com a API no ar, clique com
+o botão direito na coleção → **Run**. O endereço `http://127.0.0.1:8000` já vem configurado.
+
+---
+
+## 🧠 Decisões técnicas
+
+### 1. Proteção do pipe compartilhado
+- **Problema:** o token pertence a uma conta que pode ter outros pipes, e o Pipefy aceitaria
+  apagar ou mover um card de qualquer um deles pelo ID.
+- **Decisão:** antes de detalhar, mover ou apagar, a API busca o card e confere se ele é do
+  pipe configurado. Se não for, responde `404` sem tocar no card.
+- **Resultado:** a API nunca altera nada fora do próprio pipe, e há um teste que garante isso.
+
+### 2. Fases lidas do Pipefy, não escritas no código
+- **Problema:** escrever "Caixa de entrada → Fazendo → Concluído" no código quebraria a API
+  na primeira vez que alguém mudasse o quadro.
+- **Decisão:** a ordem das fases e qual delas é a final (`done`) vêm do próprio pipe a cada
+  movimentação.
+- **Resultado:** a API acompanha mudanças no pipe sem precisar de deploy.
+
+### 3. Cidade pelo nome, convertida para o ID
+- **Problema:** o Pipefy exige o ID do registro da tabela de cidades, que não faz sentido
+  para quem usa a API. Além disso, a tabela tem uma cidade duplicada.
+- **Decisão:** a API recebe o nome, compara sem acento e maiúsculas e, havendo duplicata,
+  usa o registro original (menor ID). Se não encontrar, o erro lista as opções válidas.
+- **Resultado:** `"eusebio"` encontra `"Eusébio"`, e quem errou a cidade já sabe como corrigir.
+
+### 4. Validação antes de chamar o Pipefy
+- **Problema:** dados inválidos criariam cards inválidos no pipe.
+- **Decisão:** os schemas validam tudo na entrada: CPF pelos dígitos verificadores (e rejeitando
+  sequências como `111.111.111-11`), data de nascimento no passado e opções de sexo e hobbies
+  restritas às do formulário.
+- **Resultado:** dado inválido recebe `422` e nunca chega ao Pipefy.
+
+### 5. Erros com o status certo
+- **Problema:** o GraphQL do Pipefy responde `200` mesmo com erro, e um erro mal traduzido
+  esconde de quem é a culpa.
+- **Decisão:** o client transforma `errors` em exceção, e um único módulo (`api/errors.py`)
+  converte cada exceção no status adequado.
+- **Resultado:** `4xx` quando o problema está no pedido, `5xx` quando está no Pipefy. Veja
+  [Tratamento de erros](#-tratamento-de-erros).
+
+### 6. Segurança e dados pessoais
+- **Token:** fica só no `.env` (fora do Git) e é guardado como `SecretStr`, que não aparece em
+  logs nem em mensagens de erro.
+- **Consultas GraphQL com variáveis:** os valores nunca são colados no texto da query, o que
+  evita *injection*.
+- **Minimização de dados (LGPD):** a listagem devolve só ID, título, fase e data. CPF e
+  telefone só aparecem no detalhe de um card específico.
+
+---
+
+## 🚨 Tratamento de erros
+
+| Status | Quando | Exemplo de resposta |
+|:-:|---|---|
+| `422` | dados inválidos: CPF, data futura, opção inexistente, JSON mal formado | detalhe do campo com problema |
+| `422` | cidade não cadastrada | `{"detail": "Cidade 'Recife' não encontrada.", "cidades_validas": [...]}` |
+| `422` | fase de destino inexistente | `{"detail": "Fase 'xyz' não encontrada.", "fases_validas": [...]}` |
+| `404` | card inexistente **ou de outro pipe** | `{"detail": "Card 123 não encontrado no pipe de Pessoas."}` |
+| `409` | o card já está na fase final ou na fase de destino | `{"detail": "O card já está na fase final ('Concluído')."}` |
+| `502` | o Pipefy recusou a operação ou respondeu com erro (ex.: token inválido) | `{"detail": "O Pipefy respondeu com erro HTTP 401."}` |
+| `503` | o Pipefy não respondeu (fora do ar, sem internet ou timeout) | `{"detail": "Não foi possível se comunicar com o Pipefy."}` |
+
+> [!TIP]
+> A regra geral: **`4xx`** = o problema está no que foi enviado (dá para corrigir e tentar de novo);
+> **`5xx`** = o problema está no Pipefy (não adianta mudar o pedido).
+
+---
+
+## ✅ Qualidade
+
+### Testes automatizados
+
+```bash
+pytest -v
+```
+
+Os testes **não chamam o Pipefy e não precisam de token**. Pela injeção de dependência do
+FastAPI, o client do Pipefy é trocado por um client falso que guarda os cards em memória
+([`tests/conftest.py`](tests/conftest.py)). Rotas, validações, regras de negócio e tratamento
+de erros rodam de verdade.
+
+```mermaid
+flowchart LR
+    T["🧪 pytest"] --> R["Rotas"] --> S["Service"] --> F["ClienteFalso<br/>cards em memória"]
+    S -. "fora dos testes" .-> C["PipefyClient"] -.-> P[("☁️ Pipefy")]
+```
+
+| Grupo | O que é testado |
+|---|---|
+| **Criar** (`POST`) | card na primeira fase, CPF formatado, cidade sem acento, cidade duplicada, cidade inexistente (`422`), CPF inválido sem chamar o Pipefy (`422`) |
+| **Mover fase** (`PATCH`) | próxima fase, aviso de fase final, avançar na fase final (`409`), destino pelo nome, destino inexistente (`422`) |
+| **Apagar** (`DELETE`) | exclusão (`204`), card inexistente (`404`), card de outro pipe **não** é apagado (`404`) |
+
+### Padrão de código
+
+```bash
+ruff format .   # formatação
+ruff check .    # lint: imports, variáveis não usadas, erros comuns
+```
+
+### Docker
+
+A imagem usa Python 3.14 *slim*, roda com um usuário sem privilégios e **não inclui o `.env`**:
+o token é lido só na hora de subir o contêiner.
+
+---
+
+## 🚀 Como rodar
+
+### Opção 1: com Docker (só precisa do Docker)
+
+```bash
+git clone https://github.com/AlissonWork/pipefy-integration-api.git
+cd pipefy-integration-api
+cp .env.example .env        # depois, preencha o PIPEFY_TOKEN
+docker compose up --build
+```
+
+### Opção 2: com Python 3.14
 
 ```bash
 git clone https://github.com/AlissonWork/pipefy-integration-api.git
@@ -63,115 +423,40 @@ source .venv/Scripts/activate   # Windows (Git Bash)
 # source .venv/bin/activate     # Linux / macOS
 
 pip install -r requirements-dev.txt
-```
+cp .env.example .env            # depois, preencha o PIPEFY_TOKEN
 
-> `requirements-dev.txt` instala as dependências da aplicação, o Ruff e o pytest.
-> Para só rodar a API, `requirements.txt` basta.
-
-### 3. Configurar o `.env`
-
-```bash
-cp .env.example .env
-```
-
-Abra o `.env` e preencha o token:
-
-| Variável | Obrigatória | Descrição |
-|---|---|---|
-| `PIPEFY_TOKEN` | sim | token de acesso à API do Pipefy (Bearer) |
-| `PIPEFY_PIPE_ID` | sim | ID do pipe de Pessoas (`303843596`) |
-| `PIPEFY_CIDADE_TABLE_ID` | sim | ID da tabela de cidades ligada ao campo Cidade (`yJ1z4HYx`) |
-| `PIPEFY_API_URL` | não | endereço da API GraphQL (padrão: `https://api.pipefy.com/graphql`) |
-| `PIPEFY_TIMEOUT` | não | segundos de espera pela resposta do Pipefy (padrão: `10`) |
-
-O `.env` está no `.gitignore`: o token nunca vai para o repositório.
-Se uma variável obrigatória faltar, o pydantic-settings acusa qual é na primeira
-requisição.
-
-### 4. Subir a API
-
-```bash
 uvicorn app.main:app --reload
 ```
 
+Nos dois casos, a API fica em:
+
 | Endereço | O que é |
 |---|---|
-| http://127.0.0.1:8000/docs | documentação interativa (Swagger), dá para testar tudo por ali |
+| http://127.0.0.1:8000/docs | documentação interativa (Swagger): dá para testar tudo por ali |
 | http://127.0.0.1:8000/redoc | documentação em formato de leitura |
-| http://127.0.0.1:8000/health | verificação rápida de que a API está no ar |
+| http://127.0.0.1:8000/health | confirma que a API está no ar |
 
-### Alternativa: rodar com Docker
+> [!IMPORTANT]
+> O Docker e o `uvicorn` usam a mesma porta (8000): rode um de cada vez.
 
-Sem instalar Python, só com o Docker. Depois de clonar e criar o `.env` (passo 3):
+### Variáveis de ambiente (`.env`)
 
-```bash
-docker compose up --build
-```
+| Variável | Obrigatória | Descrição |
+|---|:-:|---|
+| `PIPEFY_TOKEN` | ✅ | token de acesso à API do Pipefy |
+| `PIPEFY_PIPE_ID` | ✅ | ID do pipe de Pessoas (`303843596`) |
+| `PIPEFY_CIDADE_TABLE_ID` | ✅ | ID da tabela de cidades (`yJ1z4HYx`) |
+| `PIPEFY_API_URL` | | endereço da API GraphQL (padrão: `https://api.pipefy.com/graphql`) |
+| `PIPEFY_TIMEOUT` | | segundos de espera pelo Pipefy (padrão: `10`) |
 
-A API sobe no mesmo endereço (http://127.0.0.1:8000/docs). O `.env` é lido na hora
-de rodar e não entra na imagem. Para parar, `Ctrl+C`.
+O `.env` está no `.gitignore`: o token nunca vai para o repositório.
 
-> Se o `uvicorn` local estiver rodando, pare-o antes: os dois usam a porta 8000.
+<details>
+<summary><b>📚 Exemplos com curl</b></summary>
 
-### 5. Qualidade de código
+<br>
 
-```bash
-ruff format .   # formata
-ruff check .    # aponta problemas (imports, variáveis não usadas, etc.)
-```
-
-## Endpoints
-
-### Pessoas
-
-| Método | Rota | Descrição | Sucesso |
-|---|---|---|---|
-| `POST` | `/pessoas` | cadastra uma Pessoa (cria o card na primeira fase) | `201` |
-| `GET` | `/pessoas` | lista os cards, do mais novo para o mais antigo; filtro opcional `?fase=` | `200` |
-| `GET` | `/pessoas/{id}` | detalha um card com todos os campos | `200` |
-| `PATCH` | `/pessoas/{id}/fase` | avança o card ou move para a fase `destino` | `200` |
-| `DELETE` | `/pessoas/{id}` | apaga o card | `204` |
-
-### Pipe
-
-| Método | Rota | Descrição |
-|---|---|---|
-| `GET` | `/pipe` | estrutura do pipe: fases e campos do formulário |
-| `GET` | `/cidades` | cidades aceitas no campo Cidade |
-| `GET` | `/health` | status da API |
-
-### Campos da Pessoa (`POST /pessoas`)
-
-| Campo | Tipo | Obrigatório | Regras |
-|---|---|---|---|
-| `nome` | texto | sim | 2 a 120 caracteres; vira o título do card |
-| `cidade` | texto | sim | precisa existir na tabela de cidades (aceita sem acento e em minúsculas) |
-| `cpf` | texto | não | dígitos verificadores validados; aceita com ou sem máscara e é salvo como `000.000.000-00` |
-| `data_de_nascimento` | data (`AAAA-MM-DD`) | não | não pode estar no futuro |
-| `telefone` | texto | não | 8 a 20 caracteres |
-| `sexo` | opção | não | `Masculino`, `Feminino` ou `Prefere não responder` |
-| `hobbies` | lista de opções | não | `Teatro`, `Música`, `Cinema`, `Esportes`, `Leitura`, `Viagem`, `Artes` |
-
-A **data de envio** (campo `data` do formulário) é preenchida automaticamente pela API.
-
-### Fases do pipe
-
-```
-Caixa de entrada  →  Fazendo  →  Concluído (fase final)
-```
-
-O `PATCH /pessoas/{id}/fase` funciona de dois jeitos:
-
-- **sem corpo**: avança o card para a **próxima** fase;
-- **com `{"destino": "..."}`**: move para a fase indicada, pelo **nome** (sem diferenciar
-  acento ou maiúsculas, ex.: `"concluido"`) ou pelo **ID** da fase.
-
-Quando o card chega na fase final, a resposta traz `"finalizado": true` e uma mensagem
-avisando.
-
-## Exemplos de uso
-
-### Cadastrar uma Pessoa
+**Cadastrar uma Pessoa**
 
 ```bash
 curl -X POST http://127.0.0.1:8000/pessoas \
@@ -187,8 +472,6 @@ curl -X POST http://127.0.0.1:8000/pessoas \
   }'
 ```
 
-Resposta (`201 Created`):
-
 ```json
 {
   "id": "1474000000",
@@ -198,26 +481,13 @@ Resposta (`201 Created`):
 }
 ```
 
-### Avançar a fase
+**Avançar a fase**
 
 ```bash
 curl -X PATCH http://127.0.0.1:8000/pessoas/1474000000/fase
 ```
 
-Ao chegar na fase final (`200 OK`):
-
-```json
-{
-  "id": "1474000000",
-  "titulo": "Maria Silva",
-  "fase_anterior": { "id": "323403003", "nome": "Fazendo" },
-  "fase_atual": { "id": "323403004", "nome": "Concluído" },
-  "finalizado": true,
-  "mensagem": "O card chegou na fase final (Concluído)."
-}
-```
-
-### Mover para uma fase específica
+**Mover para uma fase específica**
 
 ```bash
 curl -X PATCH http://127.0.0.1:8000/pessoas/1474000000/fase \
@@ -225,151 +495,46 @@ curl -X PATCH http://127.0.0.1:8000/pessoas/1474000000/fase \
   -d '{"destino": "caixa de entrada"}'
 ```
 
-### Listar e detalhar
+**Listar (com filtro) e detalhar**
 
 ```bash
 curl "http://127.0.0.1:8000/pessoas?fase=concluido"
 curl http://127.0.0.1:8000/pessoas/1474000000
 ```
 
-### Apagar
+**Apagar**
 
 ```bash
-curl -X DELETE http://127.0.0.1:8000/pessoas/1474000000   # 204 No Content
+curl -X DELETE http://127.0.0.1:8000/pessoas/1474000000
 ```
 
-## Testes
+</details>
 
-```bash
-pytest -v
-```
+---
 
-Os testes **não chamam o Pipefy e não precisam de token**: o client do Pipefy é
-trocado por um client falso em memória (`tests/conftest.py`), usando a injeção de
-dependência do FastAPI. Rotas, validações, regras do service e tratamento de erros
-rodam de verdade.
+## 🧰 Tecnologias
 
-| Grupo | O que é testado |
+| Ferramenta | Uso |
 |---|---|
-| Criar (`POST`) | cadastro na primeira fase, CPF formatado, cidade sem acento e duplicada, cidade inexistente (422), CPF inválido (422) |
-| Mover fase (`PATCH`) | próxima fase, aviso de fase final, fase final (409), destino pelo nome, destino inexistente (422) |
-| Apagar (`DELETE`) | exclusão (204), card inexistente (404), card de outro pipe não é apagado (404) |
+| **Python 3.14** | linguagem |
+| **FastAPI** | framework web, validação e documentação automática |
+| **Pydantic v2** e **pydantic-settings** | schemas, validações e configurações via `.env` |
+| **httpx** | cliente HTTP assíncrono para a API GraphQL do Pipefy |
+| **Uvicorn** | servidor ASGI |
+| **pytest** | testes automatizados |
+| **Ruff** | lint e formatação |
+| **Docker** | execução em contêiner |
+| **Bruno** | coleção de requisições para a demonstração |
 
-## Tratamento de erros
+---
 
-Cada erro tem um status HTTP que indica **de quem é o problema** e uma mensagem
-que ajuda a corrigir:
+## 🔭 Próximos passos
 
-| Status | Quando | Exemplo de resposta |
-|---|---|---|
-| `422` | dados inválidos (CPF, data futura, opção inexistente, JSON mal formado) | detalhe do campo com problema, gerado pelo Pydantic |
-| `422` | cidade não cadastrada | `{"detail": "Cidade 'Recife' não encontrada.", "cidades_validas": [...]}` |
-| `422` | fase de destino inexistente | `{"detail": "Fase 'xyz' não encontrada.", "fases_validas": [...]}` |
-| `404` | card inexistente **ou de outro pipe** | `{"detail": "Card 123 não encontrado no pipe de Pessoas."}` |
-| `409` | card já está na fase final, ou já está na fase de destino | `{"detail": "O card já está na fase final ('Concluído')."}` |
-| `502` | o Pipefy recusou a operação ou respondeu com erro (ex.: token inválido) | `{"detail": "O Pipefy respondeu com erro HTTP 401."}` |
-| `503` | o Pipefy não respondeu (fora do ar, sem internet ou timeout) | `{"detail": "Não foi possível se comunicar com o Pipefy."}` |
+O que eu faria com mais tempo:
 
-## Arquitetura
-
-O projeto é dividido em camadas, cada uma com uma responsabilidade:
-
-```
-Requisição HTTP
-     │
-     ▼
-┌─────────────┐   valida a entrada (schemas) e define o status HTTP
-│   Rotas     │   app/api/routes/
-└─────┬───────┘
-      ▼
-┌─────────────┐   regras de negócio: resolver a cidade, escolher a próxima
-│   Service   │   fase, conferir se o card é do pipe
-└─────┬───────┘   app/services/pessoas.py
-      ▼
-┌─────────────┐   comunicação com o Pipefy: GraphQL, token, erros HTTP
-│   Client    │   app/clients/pipefy.py
-└─────┬───────┘
-      ▼
-   Pipefy (API GraphQL)
-```
-
-```
-app/
-├── main.py                 # cria o app e registra rotas e tratamento de erros
-├── core/
-│   └── config.py           # configurações lidas do .env (Settings)
-├── api/
-│   ├── dependencies.py     # injeção de dependência (Settings → Client → Service)
-│   ├── errors.py           # exceções da aplicação → respostas HTTP
-│   └── routes/
-│       ├── pessoas.py      # POST, GET, PATCH e DELETE de /pessoas
-│       └── pipe.py         # /pipe e /cidades
-├── schemas/
-│   ├── pessoa.py           # entrada do cadastro e validações (CPF, data, opções)
-│   └── card.py             # formatos de resposta
-├── services/
-│   └── pessoas.py          # regras de negócio
-└── clients/
-    └── pipefy.py           # client da API GraphQL do Pipefy
-```
-
-**Por que separar assim?**
-
-- **As rotas não sabem que o Pipefy existe**: elas só recebem e devolvem dados.
-- **O service não sabe de HTTP nem de GraphQL**: só aplica as regras.
-- **O client é o único que fala com o Pipefy**: trocar de API ou de biblioteca HTTP
-  mexe em um arquivo só.
-- **As peças são injetadas** (`Depends`): o service recebe o client pronto, o que
-  permite trocá-lo por um client falso em testes, sem chamar o Pipefy de verdade.
-
-## Decisões técnicas
-
-**Proteção do pipe compartilhado.** O token pertence a uma conta que pode ter outros
-pipes, e um ID de card de qualquer um deles seria aceito pelo Pipefy. Antes de detalhar, mover ou apagar, a API busca o card e confere se ele pertence ao
-pipe configurado. Se não pertencer, responde `404` sem tocar no card.
-
-**Fases lidas do próprio pipe.** A ordem das fases e qual é a final vêm do Pipefy
-(campo `done`), não de valores fixos no código. Se uma fase for criada ou renomeada,
-a API continua funcionando.
-
-**Cidade pelo nome, não pelo ID.** O campo Cidade é um *connector* para uma tabela,
-e o Pipefy exige o ID do registro. A API recebe o nome, busca na tabela e converte.
-A comparação ignora acentos e maiúsculas (`"eusebio"` encontra `"Eusébio"`). A tabela
-tem um registro duplicado (`Fortaleza` e `fortaleza`), então a API usa o mais antigo.
-Quando a cidade não existe, o erro lista as opções válidas.
-
-**Validação na entrada.** Os dados são validados antes de qualquer chamada ao Pipefy:
-CPF com dígitos verificadores (e rejeitando sequências como `111.111.111-11`), data
-de nascimento no passado e opções de sexo e hobbies restritas às do formulário. Dados
-inválidos nunca chegam ao Pipefy.
-
-**Erros com o status certo.** O GraphQL do Pipefy responde `200` mesmo quando há erro
-(a falha vem na chave `errors`). O client detecta isso e o converte em exceção, e um
-único módulo (`errors.py`) traduz cada exceção no status adequado. Assim, quem usa a API
-sabe se o problema foi nos dados enviados (`4xx`) ou no Pipefy (`5xx`).
-
-**Segurança do token.** O token fica só no `.env`, fora do Git, e é guardado como
-`SecretStr`, que não aparece em logs nem em mensagens de erro. As consultas GraphQL usam
-**variáveis** em vez de concatenar valores no texto, o que evita *injection*.
-
-**Mínimo de dados pessoais.** A listagem (`GET /pessoas`) devolve só ID, título, fase
-e data, sem CPF ou telefone. Os dados completos só aparecem no detalhe de um card
-específico (princípio da minimização da LGPD).
-
-**Paginação.** O Pipefy devolve no máximo 50 cards por consulta. A listagem pede página
-por página até juntar todos.
-
-## Demonstração
-
-A pasta [`bruno/`](bruno/) tem uma coleção do [Bruno](https://www.usebruno.com/) com o
-fluxo completo, já em ordem: cadastrar, consultar, avançar até a fase final, os
-principais erros e a exclusão.
-
-1. No Bruno: **Open Collection** → selecione a pasta `bruno/`.
-2. Com a API rodando, execute as requisições em ordem (ou use **Run** na coleção).
-
-O endereço da API (`http://127.0.0.1:8000`) já vem definido na coleção. Se a API rodar
-em outro endereço, ajuste o ambiente **Local** e selecione-o no canto superior direito.
-
-O ID do card criado é guardado automaticamente e reaproveitado nas requisições seguintes.
-Cada requisição confere o status esperado.
+- **Testes do client do Pipefy** simulando o HTTP com `respx`: token no cabeçalho, erros do
+  GraphQL, `401` e timeout.
+- **CI no GitHub Actions** rodando Ruff e pytest a cada pull request.
+- **Mapeamento de campos configurável**, para a API funcionar com outros pipes sem mudar o código.
+- **Cache** das fases e das cidades, que mudam pouco, para reduzir chamadas ao Pipefy.
+- **Logs estruturados** de cada operação, para auditoria.
