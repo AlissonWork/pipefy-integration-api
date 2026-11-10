@@ -88,23 +88,6 @@ flowchart LR
 | Hobbies | checklist | | lista de opções: `["Leitura", "Cinema"]` |
 | Data de envio | data e hora | | preenchida automaticamente pela API |
 
-### O que descobri explorando a API
-
-Validei o formato de cada campo criando cards de teste (e apagando em seguida). No caminho,
-apareceram comportamentos que influenciaram o código:
-
-| Descoberta | Como a API lida com isso |
-|---|---|
-| A API GraphQL usa sempre `POST` e responde **`200` mesmo quando dá erro**: a falha vem na chave `errors` | o client confere `errors` e lança uma exceção, que vira `502` |
-| Buscar um card que não existe retorna **"Acesso negado"**, e não "não encontrado" | o service traduz para `404` |
-| O campo Cidade exige o **ID do registro** da tabela, não o nome | a API recebe o nome e converte para o ID |
-| A tabela de cidades tem **`Fortaleza` duplicada** (`Fortaleza` e `fortaleza`) | a comparação ignora acento e maiúsculas e escolhe o registro original (menor ID) |
-| Checklist e connector voltam como **texto JSON** (`'["Leitura"]'`) | o detalhe do card converte de volta para lista |
-| Mover um card para a fase em que ele já está gera erro no Pipefy | a API barra antes, com `409` e uma mensagem clara |
-| A listagem de cards vem em **páginas de até 50** | a API pede página por página até juntar todos |
-
----
-
 ## 🧱 Arquitetura
 
 O código é dividido em camadas. Cada uma tem **uma responsabilidade** e só conversa
