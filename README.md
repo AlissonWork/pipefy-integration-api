@@ -18,7 +18,6 @@ cria, consulta, move entre fases e apaga, avisando quando o card chega ao fim do
 [Arquitetura](#-arquitetura) •
 [Endpoints](#-endpoints) •
 [Demonstração](#-demonstração) •
-[Decisões](#-decisões-técnicas) •
 [Qualidade](#-qualidade) •
 [Como rodar](#-como-rodar)
 
